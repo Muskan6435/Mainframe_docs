@@ -1,0 +1,295 @@
+MEMBER NAME  CICSMAP
+//DSRC036M JOB CLASS=A,NOTIFY=&SYSUID
+//JOBPROC  JCLLIB ORDER=DSRC036.MUSKAN.PROCLIB
+//CICSMAP  EXEC CICSMAP1,
+//         OUTC=*,
+//         COPYLIB=DSRC036.MUSKAN.COPYLIB,   -->  BMS MAP LIBRARY
+//         LOADLIB=CICS.APPLI.LOADLIB,      ** DONT CHANGE **
+//         MAPSETNM=EMPD                  -->  MEMBER NAME
+//COPY.SYSUT1  DD  DSN=DSRC036.MUSKAN.CICSDB2(EMPD),
+//         DISP=SHR
+MEMBER NAME  DB2BIND
+//DSRC036B JOB MSGLEVEL=(1,1),NOTIFY=&SYSUID
+//*  DB2 BIND JCL
+//BIND     EXEC PGM=IKJEFT01,
+//             COND=(4,LT),REGION=4096K
+//STEPLIB  DD  DISP=SHR,DSN=DSN910.DB9G.SDSNEXIT
+//         DD  DISP=SHR,DSN=DSN910.SDSNLOAD
+//DBRMLIB  DD DSN=DSRC036.MUSKAN.DBRMLIB,DISP=SHR
+//SYSPRINT DD  SYSOUT=*
+//SYSTSPRT DD  SYSOUT=*
+//SYSUDUMP DD  SYSOUT=*
+//SYSTSIN  DD  *
+DSN SYSTEM (DB9G   )
+BIND  MEMBER    (DBCIC) -
+      PLAN      (DBCIC) -
+      ACTION    (REP)     -
+      ISOLATION (CS)      -
+      VALIDATE  (BIND)    -
+      RELEASE   (COMMIT)  -
+      OWNER     (DSRC036) -
+      QUALIFIER (DSRC036) -
+      ENCODING  (1047)
+END
+/*
+//
+MEMBER NAME  CICDBCMP
+//DSRC036C JOB CLASS=A,NOTIFY=&SYSUID
+//JOBPROC  JCLLIB ORDER=DSRC036.MUSKAN.PROCLIB
+//DB2CICS  EXEC DB2CICS,
+//          DBRMLIB='DSRC036.MUSKAN.DBRMLIB',
+//          DB2COPY='DSRC036.MUSKAN.DCLGEN',
+//          COPYLIB='DSRC036.MUSKAN.COPYLIB',
+//          LOADLIB='CICS.APPLI.LOADLIB',
+//          MEM=DBCIC      * SHOULD BE SAME AS PROGRAM NAME
+//SYSIN    DD  DSN=DSRC036.MUSKAN.CICSDB2(DBCIC),DISP=SHR
+//LKED.SYSIN    DD  *
+  INCLUDE SYSLIB(DSNCLI)
+  NAME DBCIC(R)
+//
+MEMBER NAME  DBCIC
+       ID DIVISION.
+       PROGRAM-ID. DB2CIC.
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+           EXEC SQL
+              INCLUDE EMP9
+           END-EXEC.
+           EXEC SQL
+              INCLUDE SQLCA
+           END-EXEC.
+       COPY EMPD.
+       COPY DFHAID.
+       COPY DFHBMSCA.
+       77 WS-COMMAREA PIC X(1) VALUE SPACES.
+       77 WS-LENGTH PIC S9(4) USAGE COMP VALUE 1.
+       77 COF-IND PIC S9(4) USAGE COMP.
+       77 WS-DATM PIC S9(15) USAGE COMP3.
+
+       PROCEDURE DIVISION.
+           MOVE LOW-VALUES TO YAYO.
+           PERFORM DATE-TIME-PARA.
+           IF EIBCALEN = 0
+              PERFORM SEND-MAP
+           ELSE
+              PERFORM RECEIVE-MAP
+              PERFORM CHECK-PARA
+           END-IF.
+       SEND-MAP.
+           EXEC CICS SEND
+              MAP('YAY')
+              MAPSET('EMPD')
+              ERASE FREEKB
+           END-EXEC.
+           EXEC CICS RETURN
+              TRANSID('DBBC')
+              COMMAREA(WS-COMMAREA)
+              LENGTH(WS-LENGTH)
+           END-EXEC.
+       RECEIVE-MAP.
+           EXEC CICS RECEIVE
+              MAP('YAY')
+              MAPSET('EMPD')
+           END-EXEC.
+       CHECK-PARA.
+           EVALUATE EIBAID
+              WHEN DFHPF1 PERFORM SELECT-PARA
+              WHEN DFHPF2 PERFORM INSERT-PARA
+              WHEN DFHPF3 PERFORM EXIT-PARA
+              WHEN DFHPF4 PERFORM UPDATE-PARA
+              WHEN DFHPF5 PERFORM DELETE-PARA
+           END-EVALUATE.
+       SELECT-PARA.
+           MOVE ECODEI TO EMPNO.
+           EXEC SQL
+              SELECT EMPNO, EMPNM, EMPSAL
+              INTO :EMPNO, :EMPNM, :EMPSAL :COF-IND
+              FROM MUSKAN_EMP9
+              WHERE EMPNO = :EMPNO
+           END-EXEC.
+           IF SQLCODE = 0
+              MOVE EMPNO TO ECODEO
+              MOVE EMPNM TO ENAMEO
+              MOVE EMPSAL TO ESALO
+              MOVE 'RECORD FOUND' TO MSGO
+              PERFORM SEND-MAP
+           ELSE IF SQLCODE = 100
+              MOVE 'RECORD NOT FOUND' TO MSGO
+              PERFORM SEND-MAP
+           END-IF.
+       INSERT-PARA.
+           MOVE ECODEI TO EMPNO.
+           MOVE ENAMEI TO EMPNM.
+           MOVE ESALI TO EMPSAL.
+           EXEC SQL
+              INSERT INTO MUSKAN_EMP9 VALUES
+              (:EMPNO, :EMPNM, :EMPSAL :COF-IND)
+           END-EXEC.
+           IF SQLCODE = 0
+              MOVE EMPNO TO ECODEO
+              MOVE EMPNM TO ENAMEO
+              MOVE EMPSAL TO ESALO
+              MOVE 'RECORD INSERTED' TO MSGO
+              PERFORM SEND-MAP
+           END-IF.
+       UPDATE-PARA.
+           MOVE ECODEI TO EMPNO.
+           EXEC SQL
+              SELECT EMPNO, EMPNM, EMPSAL
+              INTO :EMPNO, :EMPNM, :EMPSAL :COF-IND
+              FROM MUSKAN_EMP9
+              WHERE EMPNO = :EMPNO
+           END-EXEC.
+           MOVE ENAMEI TO EMPNM.
+           MOVE ESALI TO EMPSAL.
+           EXEC SQL
+              UPDATE MUSKAN_EMP9
+              SET EMPNM = :EMPNM, EMPSAL = :EMPSAL
+              WHERE EMPNO = :EMPNO
+           END-EXEC.
+           IF SQLCODE = 0
+              MOVE EMPNO TO ECODEO
+              MOVE EMPNM TO ENAMEO
+              MOVE EMPSAL TO ESALO
+              MOVE 'RECORD UPDATED' TO MSGO
+              PERFORM SEND-MAP
+           ELSE IF SQLCODE = 100
+              MOVE 'RECORD NOT FOUND' TO MSGO
+              PERFORM SEND-MAP
+           END-IF.
+       DELETE-PARA.
+           MOVE ECODEI TO EMPNO.
+           EXEC SQL
+              SELECT EMPNO, EMPNM, EMPSAL
+              INTO :EMPNO, :EMPNM, :EMPSAL :COF-IND
+              FROM MUSKAN_EMP9
+              WHERE EMPNO = :EMPNO
+           END-EXEC.
+           EXEC SQL
+              DELETE FROM MUSKAN_EMP9
+              WHERE EMPNO = :EMPNO
+           END-EXEC.
+           IF SQLCODE = 0
+              MOVE 'RECORD DELETED' TO MSGO
+              PERFORM SEND-MAP
+           ELSE IF SQLCODE = 100
+              MOVE 'RECORD NOT FOUND' TO MSGO
+              PERFORM SEND-MAP
+           END-IF.
+       DATE-TIME-PARA.
+           EXEC CICS ASKTIME
+              ABSTIME(WS-DATM)
+           END-EXEC.
+           EXEC CICS FORMATTIME
+              ABSTIME(WS-DATM)
+              MMDDYYYY(WS-DATE)
+              DATASET('/')
+              TIME(WS-TIME)
+              TIMESEP(':')
+           END-EXEC.
+           MOVE WS-DATE TO DTO.
+           MOVE WS-TIME TO TTO.
+       EXIT-PARA.
+           EXEC CICS RETURN
+           END-EXEC.
+MEMBER NAME  EMPD
+EMPD     DFHMSD TYPE=&SYSPARM,                                         X
+               MODE=INOUT,                                             X
+               LANG=COBOL,                                             X
+               STORAGE=AUTO,                                           X
+               TIOAPFX=YES,                                            X
+               MAPATTS=(COLOR,HILIGHT),                                X
+               DSATTS=(COLOR,HILIGHT),                                 X
+               CTRL=(FREEKB,FRSET),                                    X
+               TERM=ALL
+YAY      DFHMDI SIZE=(24,80),                                          X
+               LINE=1,COLUMN=1
+         DFHMDF POS=(5,30),                                            X
+               INITIAL='COFORGE TECHNOLOGY',                           X
+               LENGTH=18,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=RED
+         DFHMDF POS=(5,50),                                            X
+               INITIAL='DATE',                                         X
+               LENGTH=4,                                               X
+               ATTRB=PROT,                                             X
+               COLOR=RED
+DT       DFHMDF POS=(5,55),                                            X
+               INITIAL='----------',                                   X
+               LENGTH=10,                                              X
+               ATTRB=UNPROT,                                           X
+               COLOR=BLUE
+         DFHMDF POS=(6,30),                                            X
+               INITIAL='------------------',                           X
+               LENGTH=18,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=PINK
+         DFHMDF POS=(6,50),                                            X
+               INITIAL='TIME',                                         X
+               LENGTH=4,                                               X
+               ATTRB=PROT,                                             X
+               COLOR=RED
+TT       DFHMDF POS=(6,55),                                            X
+               INITIAL='--------',                                     X
+               LENGTH=8,                                               X
+               ATTRB=UNPROT,                                           X
+               COLOR=BLUE
+         DFHMDF POS=(8,2),                                             X
+               INITIAL='ENTER EMPLOYEE CODE:',                         X
+               LENGTH=20,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=BLUE
+ECODE    DFHMDF POS=(8,30),                                            X
+               INITIAL='----',                                         X
+               LENGTH=4,                                               X
+               ATTRB=(UNPROT,IC),                                      X
+               COLOR=PINK
+*
+* -----------------------------------------------------------
+*  CODE FOR ENAME
+* -----------------------------------------------------------
+*
+         DFHMDF POS=(10,2),                                            X
+               INITIAL='ENTER EMPLOYEE NAME:',                         X
+               LENGTH=20,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=BLUE
+ENAME    DFHMDF POS=(10,30),                                           X
+               INITIAL='-----------',                                  X
+               LENGTH=11,                                              X
+               ATTRB=(UNPROT),                                         X
+               COLOR=PINK
+         DFHMDF POS=(12,2),                                            X
+               INITIAL='ENTER EMPLOYEE SALARY:',                       X
+               LENGTH=22,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=BLUE
+ESAL     DFHMDF POS=(12,30),                                           X
+               INITIAL='-----',                                        X
+               LENGTH=5,                                               X
+               ATTRB=(UNPROT),                                         X
+               COLOR=PINK
+         DFHMDF POS=(14,5),                                            X
+               INITIAL='MESSAGE',                                      X
+               LENGTH=15,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=BLUE
+MSG      DFHMDF POS=(14,30),                                           X
+               INITIAL='--------------------',                         X
+               LENGTH=20,                                              X
+               ATTRB=(PROT),                                           X
+               COLOR=PINK
+         DFHMDF POS=(17,8),                                            X
+               INITIAL='PF1=SELECT, PF2 = WRITE, PF3 = EXIT',          X
+               LENGTH=40,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=YELLOW
+         DFHMDF POS=(18,8),                                            X
+               INITIAL='PF4=UPDATE, PF5 = DELETE',                     X
+               LENGTH=30,                                              X
+               ATTRB=PROT,                                             X
+               COLOR=YELLOW
+EMPD     DFHMSD TYPE=FINAL
+                END
+
